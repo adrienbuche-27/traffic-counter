@@ -1,0 +1,28 @@
+# Donnees et logs
+*.log
+*.db
+*.json
+
+# Modeles YOLO
+yolov8n.pt
+yolov8s.pt
+yolov8n_ncnn_model/
+yolov8n_ncnn_model_old/
+
+# Videos
+*.mp4
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# SORT
+sort/
+
+# ROI
+data/roi.json
+
+.env
+

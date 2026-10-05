@@ -1,0 +1,19 @@
+[Unit]
+Description=Traffic Counter — detection live avec redemarrage cyclique
+After=network.target multi-user.target
+Wants=network.target
+
+[Service]
+User=pi
+Group=pi
+WorkingDirectory=/home/abuche/Documents/traffic-counter
+ExecStart=/bin/bash /home/abuche/Documents/traffic-counter/run_counter.sh
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

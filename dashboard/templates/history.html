@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Traffic Counter — Historique</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 28px;
+    }
+
+    header h1 { font-size: 20px; font-weight: 600; }
+
+    nav a {
+      font-size: 13px;
+      color: #64748b;
+      text-decoration: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid #2d3348;
+      transition: color .2s, border-color .2s;
+    }
+    nav a:hover { color: #e2e8f0; border-color: #64748b; }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .period-btn {
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: 1px solid #2d3348;
+      background: #1e2330;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all .15s;
+    }
+
+    .period-btn.active, .period-btn:hover {
+      background: #3b82f6;
+      color: #fff;
+      border-color: #3b82f6;
+    }
+
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .kpi {
+      background: #1e2330;
+      border: 1px solid #2d3348;
+      border-radius: 12px;
+      padding: 20px 24px;
+      text-align: center;
+    }
+
+    .kpi .value {
+      font-size: 36px;
+      font-weight: 700;
+      line-height: 1;
+      margin-bottom: 6px;
+      color: #60a5fa;
+    }
+
+    .kpi .label {
+      font-size: 12px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+
+    .kpi .sublabel {
+      font-size: 11px;
+      color: #475569;
+      margin-top: 4px;
+    }
+
+    .charts {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: #1e2330;
+      border: 1px solid #2d3348;
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .card h2 {
+      font-size: 13px;
+      font-weight: 500;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 16px;
+    }
+
+    .chart-wrap { position: relative; height: 260px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    thead th {
+      text-align: left;
+      color: #64748b;
+      font-weight: 500;
+      padding: 0 16px 10px 0;
+      border-bottom: 1px solid #2d3348;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    tbody tr { border-bottom: 1px solid #1a1f2e; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: #151922; }
+    tbody td { padding: 10px 16px 10px 0; color: #cbd5e1; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .dir-up   { color: #34d399; }
+    .dir-down { color: #f472b6; }
+
+    .bar-inline {
+      display: inline-block;
+      height: 6px;
+      border-radius: 3px;
+      background: #3b82f6;
+      vertical-align: middle;
+      margin-left: 8px;
+      opacity: 0.6;
+    }
+
+    #loading {
+      text-align: center;
+      padding: 60px;
+      color: #64748b;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Traffic Counter — Historique</h1>
+  <nav><a href="/">← Dashboard du jour</a></nav>
+</header>
+
+<!-- Sélecteur de période -->
+<div class="controls">
+  <button class="period-btn active" onclick="loadHistory(7,  this)">7 jours</button>
+  <button class="period-btn"        onclick="loadHistory(14, this)">14 jours</button>
+  <button class="period-btn"        onclick="loadHistory(30, this)">30 jours</button>
+  <span id="period-label" style="font-size:12px;color:#64748b;margin-left:4px"></span>
+</div>
+
+<div id="loading">Chargement...</div>
+<div id="content" style="display:none">
+
+  <!-- KPIs -->
+  <div class="kpi-row">
+    <div class="kpi">
+      <div class="value" id="kpi-total">—</div>
+      <div class="label">Total passages</div>
+      <div class="sublabel" id="kpi-period"></div>
+    </div>
+    <div class="kpi">
+      <div class="value" id="kpi-avg">—</div>
+      <div class="label">Moyenne / jour</div>
+      <div class="sublabel">passages par jour</div>
+    </div>
+    <div class="kpi">
+      <div class="value" id="kpi-max">—</div>
+      <div class="label">Jour le plus actif</div>
+      <div class="sublabel" id="kpi-max-date"></div>
+    </div>
+    <div class="kpi">
+      <div class="value" id="kpi-peak">—</div>
+      <div class="label">Heure de pointe</div>
+      <div class="sublabel">en moyenne</div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="charts">
+
+    <div class="card">
+      <h2>Passages par jour</h2>
+      <div class="chart-wrap">
+        <canvas id="chart-daily"></canvas>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Moyenne des passages par heure</h2>
+      <div class="chart-wrap">
+        <canvas id="chart-hourly"></canvas>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Tableau récapitulatif -->
+  <div class="card">
+    <h2>Récapitulatif par jour</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Total</th>
+          <th>↑ Approche</th>
+          <th>↓ Éloigne</th>
+          <th>Voitures</th>
+          <th>Camions</th>
+          <th>Vélos</th>
+          <th>Autres</th>
+          <th>Tendance</th>
+        </tr>
+      </thead>
+      <tbody id="daily-table"></tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+  Chart.defaults.color = "#64748b";
+  Chart.defaults.font.family = "system-ui, sans-serif";
+  Chart.defaults.font.size = 12;
+
+  let dailyChart  = null;
+  let hourlyChart = null;
+
+  async function loadHistory(days, btn) {
+    // Boutons période
+    document.querySelectorAll(".period-btn").forEach(b => b.classList.remove("active"));
+    if (btn) btn.classList.add("active");
+
+    document.getElementById("loading").style.display = "block";
+    document.getElementById("content").style.display = "none";
+
+    try {
+      const res  = await fetch(`/api/history?days=${days}`);
+      const data = await res.json();
+      renderHistory(data);
+    } catch(e) {
+      document.getElementById("loading").textContent = "Erreur : " + e.message;
+    }
+  }
+
+  function renderHistory(data) {
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("content").style.display = "block";
+
+    // Période label
+    document.getElementById("period-label").textContent =
+      `${data.start} → ${data.end}`;
+
+    // ── KPIs ──
+    const activeDays = data.daily.filter(d => d.total > 0);
+    const maxDay     = data.daily.reduce((a, b) => a.total > b.total ? a : b, {total: 0});
+    const peakHour   = data.by_hour_avg.reduce((a, b) => a.avg > b.avg ? a : b, {hour: "—", avg: 0});
+    const avg        = activeDays.length > 0
+      ? Math.round(data.grand_total / activeDays.length) : 0;
+
+    document.getElementById("kpi-total").textContent    = data.grand_total;
+    document.getElementById("kpi-period").textContent   = `sur ${data.days} jours`;
+    document.getElementById("kpi-avg").textContent      = avg;
+    document.getElementById("kpi-max").textContent      = maxDay.total || "—";
+    document.getElementById("kpi-max-date").textContent = maxDay.date  || "";
+    document.getElementById("kpi-peak").textContent     = peakHour.hour;
+
+    // ── Graphique passages par jour ──
+    const labels = data.daily.map(d => {
+      const dt = new Date(d.date);
+      return dt.toLocaleDateString("fr-BE", { weekday: "short", day: "numeric", month: "short" });
+    });
+    const totals = data.daily.map(d => d.total);
+
+    if (dailyChart) dailyChart.destroy();
+    dailyChart = new Chart(document.getElementById("chart-daily"), {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [{
+          data:            totals,
+          backgroundColor: totals.map(v => v === Math.max(...totals) ? "#3b82f6" : "#3b82f620"),
+          borderColor:     "#3b82f6",
+          borderWidth:     1.5,
+          borderRadius:    4,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: "#1a1f2e" } },
+          y: { grid: { color: "#2d3348" }, ticks: { stepSize: 1 }, beginAtZero: true }
+        }
+      }
+    });
+
+    // ── Graphique moyenne horaire ──
+    const hourLabels = data.by_hour_avg.map(h => h.hour);
+    const hourAvgs   = data.by_hour_avg.map(h => h.avg);
+
+    if (hourlyChart) hourlyChart.destroy();
+    hourlyChart = new Chart(document.getElementById("chart-hourly"), {
+      type: "bar",
+      data: {
+        labels: hourLabels,
+        datasets: [{
+          data:            hourAvgs,
+          backgroundColor: "#a78bfa30",
+          borderColor:     "#a78bfa",
+          borderWidth:     1.5,
+          borderRadius:    4,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: "#1a1f2e" } },
+          y: { grid: { color: "#2d3348" }, beginAtZero: true }
+        }
+      }
+    });
+
+    // ── Tableau récapitulatif ──
+    const maxTotal = Math.max(...data.daily.map(d => d.total), 1);
+    const tbody = document.getElementById("daily-table");
+
+    if (data.daily.every(d => d.total === 0)) {
+      tbody.innerHTML = `<tr><td colspan="9" style="color:#64748b;padding:20px 0">Aucune donnée sur cette période</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = data.daily.map(d => {
+      const up      = d.by_dir["↑"] || 0;
+      const down    = d.by_dir["↓"] || 0;
+      const cars    = d.by_class["car"]     || 0;
+      const trucks  = d.by_class["truck"]   || 0;
+      const bikes   = d.by_class["bicycle"] || 0;
+      const others  = d.total - cars - trucks - bikes;
+      const barW    = Math.round((d.total / maxTotal) * 120);
+      const isToday = d.date === new Date().toISOString().split("T")[0];
+
+      return `
+        <tr style="${isToday ? 'background:#151922' : ''}">
+          <td style="font-weight:${isToday ? '600' : '400'};color:${isToday ? '#60a5fa' : '#cbd5e1'}">
+            ${d.date}${isToday ? ' <span style="font-size:10px;color:#475569">(auj.)</span>' : ''}
+          </td>
+          <td style="font-weight:600">${d.total || '—'}</td>
+          <td class="dir-up">${up   || '—'}</td>
+          <td class="dir-down">${down || '—'}</td>
+          <td>${cars   || '—'}</td>
+          <td>${trucks || '—'}</td>
+          <td>${bikes  || '—'}</td>
+          <td style="color:#64748b">${others > 0 ? others : '—'}</td>
+          <td>
+            ${d.total > 0
+              ? `<span class="bar-inline" style="width:${barW}px"></span>`
+              : '<span style="color:#2d3348">—</span>'}
+          </td>
+        </tr>
+      `;
+    }).reverse().join("");  // plus récent en premier
+  }
+
+  // Chargement initial
+  loadHistory(7, document.querySelector(".period-btn.active"));
+</script>
+
+</body>
+</html>

@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Traffic Counter</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 28px;
+    }
+
+    header h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.3px; }
+
+    #updated { font-size: 12px; color: #64748b; }
+    #updated span {
+      display: inline-block;
+      width: 8px; height: 8px;
+      background: #22c55e;
+      border-radius: 50%;
+      margin-right: 6px;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.3; }
+    }
+
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .kpi {
+      background: #1e2330;
+      border: 1px solid #2d3348;
+      border-radius: 12px;
+      padding: 20px 24px;
+      text-align: center;
+    }
+
+    .kpi .value {
+      font-size: 42px;
+      font-weight: 700;
+      line-height: 1;
+      margin-bottom: 6px;
+    }
+
+    .kpi .label {
+      font-size: 12px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+
+    .kpi.total .value { color: #60a5fa; }
+    .kpi.up    .value { color: #34d399; }
+    .kpi.down  .value { color: #f472b6; }
+
+    .charts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    @media (max-width: 700px) {
+      .charts { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: #1e2330;
+      border: 1px solid #2d3348;
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .card.wide { grid-column: 1 / -1; }
+
+    .card h2 {
+      font-size: 13px;
+      font-weight: 500;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 16px;
+    }
+
+    .chart-wrap { position: relative; height: 220px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    thead th {
+      text-align: left;
+      color: #64748b;
+      font-weight: 500;
+      padding: 0 12px 10px 0;
+      border-bottom: 1px solid #2d3348;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    tbody tr { border-bottom: 1px solid #1a1f2e; }
+    tbody tr:last-child { border-bottom: none; }
+
+    tbody td { padding: 9px 12px 9px 0; color: #cbd5e1; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .badge-car        { background: #1e3a5f; color: #60a5fa; }
+    .badge-bicycle    { background: #14392b; color: #34d399; }
+    .badge-truck      { background: #2d1f4a; color: #a78bfa; }
+    .badge-bus        { background: #3d2a10; color: #fb923c; }
+    .badge-motorcycle { background: #3a1a2e; color: #f472b6; }
+    .badge-unknown    { background: #2a2a2a; color: #94a3b8; }
+
+    .dir-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .dir-up   { background: #14392b; color: #34d399; }
+    .dir-down { background: #3a1a2e; color: #f472b6; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Traffic Counter</h1>
+  <div style="display:flex;align-items:center;gap:16px">
+    <a href="/history"
+       style="font-size:13px;color:#64748b;text-decoration:none;padding:6px 12px;border-radius:6px;border:1px solid #2d3348">
+      Historique →
+    </a>
+    <div id="updated"><span></span>Mise à jour : <b id="ts">--:--:--</b></div>
+  </div>
+</header>
+
+<!-- KPIs -->
+<div class="kpi-row">
+  <div class="kpi total">
+    <div class="value" id="kpi-total">0</div>
+    <div class="label">Passages aujourd'hui</div>
+  </div>
+  <div class="kpi up">
+    <div class="value" id="kpi-up">0</div>
+    <div class="label">↑ S'approche</div>
+  </div>
+  <div class="kpi down">
+    <div class="value" id="kpi-down">0</div>
+    <div class="label">↓ S'éloigne</div>
+  </div>
+</div>
+
+<!-- Charts -->
+<div class="charts">
+
+  <div class="card wide">
+    <h2>Passages par heure</h2>
+    <div class="chart-wrap">
+      <canvas id="chart-hour"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Répartition par classe</h2>
+    <div class="chart-wrap">
+      <canvas id="chart-class"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Répartition par direction</h2>
+    <div class="chart-wrap">
+      <canvas id="chart-dir"></canvas>
+    </div>
+  </div>
+
+</div>
+
+<!-- Recent -->
+<div class="card">
+  <h2>Derniers passages</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Heure</th>
+        <th>Classe</th>
+        <th>Direction</th>
+      </tr>
+    </thead>
+    <tbody id="recent-body">
+      <tr><td colspan="3" style="color:#64748b">Chargement...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+  const CLASS_COLORS = {
+    car:        "#60a5fa",
+    bicycle:    "#34d399",
+    truck:      "#a78bfa",
+    bus:        "#fb923c",
+    motorcycle: "#f472b6",
+    unknown:    "#94a3b8",
+  };
+
+  const DIR_COLORS = {
+    "↑": "#34d399",
+    "↓": "#f472b6",
+  };
+
+  Chart.defaults.color = "#64748b";
+  Chart.defaults.font.family = "system-ui, sans-serif";
+  Chart.defaults.font.size = 12;
+
+  const hourChart = new Chart(document.getElementById("chart-hour"), {
+    type: "bar",
+    data: {
+      labels: [],
+      datasets: [{
+        data: [],
+        backgroundColor: "#3b82f640",
+        borderColor: "#60a5fa",
+        borderWidth: 1.5,
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: "#1e2330" } },
+        y: { grid: { color: "#2d3348" }, ticks: { stepSize: 1 }, beginAtZero: true }
+      }
+    }
+  });
+
+  const classChart = new Chart(document.getElementById("chart-class"), {
+    type: "doughnut",
+    data: {
+      labels: [],
+      datasets: [{ data: [], backgroundColor: [], borderWidth: 0, hoverOffset: 6 }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: "right", labels: { padding: 16, boxWidth: 12, boxHeight: 12 } } },
+      cutout: "65%"
+    }
+  });
+
+  const dirChart = new Chart(document.getElementById("chart-dir"), {
+    type: "doughnut",
+    data: {
+      labels: [],
+      datasets: [{ data: [], backgroundColor: [], borderWidth: 0, hoverOffset: 6 }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: "right", labels: { padding: 16, boxWidth: 12, boxHeight: 12 } } },
+      cutout: "65%"
+    }
+  });
+
+  function badgeClass(cls) {
+    return `<span class="badge badge-${cls}">${cls}</span>`;
+  }
+
+  function badgeDir(dir) {
+    const cssClass = dir === "↑" ? "dir-up" : "dir-down";
+    const label    = dir === "↑" ? "↑ s'approche" : "↓ s'éloigne";
+    return `<span class="dir-badge ${cssClass}">${label}</span>`;
+  }
+
+  async function refresh() {
+    try {
+      const res  = await fetch("/api/stats");
+      const data = await res.json();
+
+      document.getElementById("kpi-total").textContent = data.total;
+      document.getElementById("kpi-up").textContent    = data.up;
+      document.getElementById("kpi-down").textContent  = data.down;
+      document.getElementById("ts").textContent        = data.updated_at;
+
+      hourChart.data.labels            = data.by_hour.map(d => d.hour);
+      hourChart.data.datasets[0].data  = data.by_hour.map(d => d.n);
+      hourChart.update("none");
+
+      classChart.data.labels                       = data.by_class.map(d => d.class);
+      classChart.data.datasets[0].data             = data.by_class.map(d => d.n);
+      classChart.data.datasets[0].backgroundColor  = data.by_class.map(d => CLASS_COLORS[d.class] ?? "#94a3b8");
+      classChart.update("none");
+
+      dirChart.data.labels                       = data.by_direction.map(d => d.direction);
+      dirChart.data.datasets[0].data             = data.by_direction.map(d => d.n);
+      dirChart.data.datasets[0].backgroundColor  = data.by_direction.map(d => DIR_COLORS[d.direction] ?? "#94a3b8");
+      dirChart.update("none");
+
+      const tbody = document.getElementById("recent-body");
+      if (!data.recent || data.recent.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="3" style="color:#64748b">Aucun passage aujourd'hui</td></tr>`;
+      } else {
+        tbody.innerHTML = data.recent.map(r => `
+          <tr>
+            <td>${r.timestamp.split(" ")[1]}</td>
+            <td>${badgeClass(r.class)}</td>
+            <td>${badgeDir(r.direction)}</td>
+          </tr>
+        `).join("");
+      }
+    } catch(e) {
+      console.error("Erreur fetch:", e);
+    }
+  }
+
+  refresh();
+  setInterval(refresh, 10000);
+</script>
+
+<!-- Sanity Check Section -->
+<div class="card wide" style="margin-top:16px">
+  <h2>Sanity check — passages manqués</h2>
+
+  <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
+
+    <input type="date" id="sc-date" style="background:#2d3348;border:1px solid #3d4460;color:#e2e8f0;padding:6px 10px;border-radius:8px;font-size:13px"/>
+
+    <label style="font-size:13px;color:#94a3b8">Min frames
+      <input type="number" id="sc-min-det" value="5" min="3" max="20"
+             style="width:56px;margin-left:6px;background:#2d3348;border:1px solid #3d4460;color:#e2e8f0;padding:4px 8px;border-radius:6px;font-size:13px"/>
+    </label>
+
+    <label style="font-size:13px;color:#94a3b8">Fenêtre doublons
+      <input type="number" id="sc-dup-window" value="1" min="1" max="30" step="0.5"
+             style="width:56px;margin-left:6px;background:#2d3348;border:1px solid #3d4460;color:#e2e8f0;padding:4px 8px;border-radius:6px;font-size:13px"/>
+      <span style="margin-left:4px;color:#64748b">s</span>
+    </label>
+
+    <!-- Toggle Claude -->
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#94a3b8;user-select:none">
+      <div id="claude-track"
+           style="position:relative;width:36px;height:20px;background:#534AB7;border-radius:10px;transition:background .2s;flex-shrink:0">
+        <div id="claude-thumb"
+             style="position:absolute;top:3px;left:17px;width:14px;height:14px;background:#fff;border-radius:50%;transition:left .2s"></div>
+      </div>
+      <span id="claude-label-text" style="color:#a78bfa">Claude activé</span>
+    </label>
+
+    <button id="sc-run-btn" onclick="runSanity()"
+            style="background:#3b82f6;color:#fff;border:none;padding:8px 18px;border-radius:8px;cursor:pointer;font-size:13px">
+      Analyser
+    </button>
+
+    <button id="sc-insert-btn" onclick="insertMissed()" disabled
+            style="background:#1e2330;color:#64748b;border:1px solid #2d3348;padding:8px 18px;border-radius:8px;cursor:not-allowed;font-size:13px">
+      Insérer les manqués
+    </button>
+
+    <button id="sc-dedup-btn" onclick="removeDuplicates()" disabled
+            style="background:#1e2330;color:#64748b;border:1px solid #2d3348;padding:8px 18px;border-radius:8px;cursor:not-allowed;font-size:13px">
+      Supprimer les doublons
+    </button>
+
+    <span id="sc-status" style="font-size:12px;color:#64748b"></span>
+  </div>
+
+  <div id="sc-summary" style="display:none;margin-bottom:16px;padding:12px 16px;background:#151922;border-radius:8px;font-size:13px"></div>
+</div>
+
+<!-- Tableau passages manqués -->
+<div id="sc-missed-container" style="display:none;margin-top:16px">
+  <div class="card">
+    <h2>Passages manqués</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Heure</th>
+          <th>Classe</th>
+          <th>Direction</th>
+          <th>Frames</th>
+          <th>Conf moy</th>
+          <th>Durée</th>
+          <th>Méthode</th>
+          <th>Décision</th>
+          <th>Inséré</th>
+        </tr>
+      </thead>
+      <tbody id="sc-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Tableau doublons -->
+<div id="sc-duplicates" style="display:none;margin-top:16px">
+  <div class="card">
+    <h2>Doublons détectés</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Garder</th>
+          <th>Supprimer</th>
+          <th>Classe</th>
+          <th>Direction</th>
+          <th>Delta</th>
+          <th>Raison</th>
+          <th>Statut</th>
+        </tr>
+      </thead>
+      <tbody id="sc-dup-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  // ── Init date selector ────────────────────────────────────────────────────────
+  async function loadAvailableLogs() {
+    try {
+      const res  = await fetch("/api/sanity/available-logs");
+      const data = await res.json();
+      const sel  = document.getElementById("sc-date");
+      sel.innerHTML = data.logs.map((d, i) =>
+        `<option value="${d}" ${i === 0 ? "selected" : ""}>${d}</option>`
+      ).join("");
+      if (data.logs.length === 0)
+        sel.innerHTML = '<option value="">Aucun log disponible</option>';
+    } catch(e) {
+      document.getElementById("sc-date").innerHTML = '<option value="">Erreur chargement</option>';
+    }
+  }
+  loadAvailableLogs();
+
+  // document.getElementById("sc-date").value = new Date().toISOString().split("T")[0];
+
+  // ── Toggle Claude ─────────────────────────────────────────────────────────────
+  let claudeEnabled = true;
+
+  document.getElementById("claude-track").addEventListener("click", function() {
+    claudeEnabled = !claudeEnabled;
+    const track = document.getElementById("claude-track");
+    const thumb = document.getElementById("claude-thumb");
+    const label = document.getElementById("claude-label-text");
+    if (claudeEnabled) {
+      track.style.background = "#534AB7";
+      thumb.style.left       = "17px";
+      label.style.color      = "#a78bfa";
+      label.textContent      = "Claude activé";
+    } else {
+      track.style.background = "#2d3348";
+      thumb.style.left       = "3px";
+      label.style.color      = "#64748b";
+      label.textContent      = "Claude désactivé";
+    }
+  });
+
+  // ── Boutons helpers ───────────────────────────────────────────────────────────
+  function setBtn(id, active, activeColor) {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.disabled           = !active;
+    btn.style.background   = active ? activeColor : "#1e2330";
+    btn.style.color        = active ? "#fff"       : "#64748b";
+    btn.style.cursor       = active ? "pointer"    : "not-allowed";
+    btn.style.borderColor  = active ? activeColor  : "#2d3348";
+  }
+
+  // ── runSanity ─────────────────────────────────────────────────────────────────
+  async function runSanity() {
+    const btn    = document.getElementById("sc-run-btn");
+    const status = document.getElementById("sc-status");
+    btn.disabled    = true;
+    btn.textContent = "Analyse en cours...";
+    status.textContent = claudeEnabled
+      ? "Peut prendre 30-60s (Claude API actif)..."
+      : "Analyse en cours...";
+    try {
+      const res = await fetch("/api/sanity/run", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          date:             document.getElementById("sc-date").value,
+          min_detections:   parseInt(document.getElementById("sc-min-det").value),
+          duplicate_window: parseFloat(document.getElementById("sc-dup-window").value),
+          use_claude:       claudeEnabled
+        })
+      });
+      const data = await res.json();
+      renderReport(data);
+    } catch(e) {
+      status.textContent = "Erreur : " + e.message;
+    } finally {
+      btn.disabled    = false;
+      btn.textContent = "Analyser";
+    }
+  }
+
+  // ── insertMissed ──────────────────────────────────────────────────────────────
+  async function insertMissed() {
+    const status = document.getElementById("sc-status");
+    status.textContent = "Insertion en cours...";
+    try {
+      const res  = await fetch("/api/sanity/insert", { method: "POST" });
+      const data = await res.json();
+      renderReport(data);
+      status.textContent = `${data.inserted_count} passage(s) inséré(s)`;
+    } catch(e) {
+      status.textContent = "Erreur : " + e.message;
+    }
+  }
+
+  // ── removeDuplicates ──────────────────────────────────────────────────────────
+  async function removeDuplicates() {
+    const status = document.getElementById("sc-status");
+    status.textContent = "Suppression en cours...";
+    try {
+      const res  = await fetch("/api/sanity/remove-duplicates", { method: "POST" });
+      const data = await res.json();
+      if (data.error) {
+        status.textContent = "Erreur : " + data.error;
+        return;
+      }
+      renderReport(data);
+      status.textContent = `${data.duplicates_removed} doublon(s) supprimé(s)`;
+    } catch(e) {
+      status.textContent = "Erreur : " + e.message;
+    }
+  }
+
+  // ── renderReport ──────────────────────────────────────────────────────────────
+  function renderReport(data) {
+    if (data.error) {
+      document.getElementById("sc-status").textContent = data.error;
+      return;
+    }
+
+    // Résumé
+    const summary = document.getElementById("sc-summary");
+    summary.style.display = "block";
+    const rate = data.total_candidates > 0
+      ? Math.round(data.db_passages / data.total_candidates * 100) : 0;
+
+    const claudeStats = (data.claude_api_calls !== undefined)
+      ? `&nbsp;|&nbsp;<span style="color:#a78bfa">Claude appels : <b>${data.claude_api_calls}</b></span>
+         &nbsp;|&nbsp;<span style="color:#534AB7">Cache hits : <b>${data.claude_cache_hits}</b></span>`
+      : "";
+
+    summary.innerHTML = `
+      <span style="color:#60a5fa">Détections YOLO : <b>${data.total_yolo}</b></span> &nbsp;|&nbsp;
+      <span style="color:#a78bfa">Candidats : <b>${data.total_candidates}</b></span> &nbsp;|&nbsp;
+      <span style="color:#34d399">Comptés en DB : <b>${data.db_passages}</b></span> &nbsp;|&nbsp;
+      <span style="color:#f472b6">Manqués : <b>${data.missed_count}</b></span> &nbsp;|&nbsp;
+      <span style="color:#fb923c">Doublons : <b>${data.duplicates_count}</b></span> &nbsp;|&nbsp;
+      <span style="color:#94a3b8">Taux : <b>${rate}%</b></span>
+      ${claudeStats}
+    `;
+
+    // ── Tableau passages manqués ──
+    const missedContainer = document.getElementById("sc-missed-container");
+    if (!data.missed || data.missed.length === 0) {
+      missedContainer.style.display = "none";
+    } else {
+      missedContainer.style.display = "block";
+      document.getElementById("sc-body").innerHTML = data.missed.map(m => `
+        <tr style="opacity:${m.should_count ? 1 : 0.45}">
+          <td>${m.timestamp ? m.timestamp.split("T")[1].substring(0,8) : "—"}</td>
+          <td><span class="badge badge-${m.cls}">${m.cls}</span></td>
+          <td><span class="dir-badge ${m.direction === '↑' ? 'dir-up' : 'dir-down'}">${m.direction}</span></td>
+          <td>${m.n_frames}</td>
+          <td style="color:${m.avg_conf < 0.35 ? '#f472b6' : '#34d399'}">${m.avg_conf}</td>
+          <td style="color:${(m.duration_sec||0) > 15 ? '#fb923c' : '#94a3b8'}">${m.duration_sec || 0}s</td>
+          <td>
+            <span style="font-size:11px;padding:2px 6px;border-radius:10px;
+                         background:${m.method === 'claude' ? '#2d1f4a' : '#14392b'};
+                         color:${m.method === 'claude' ? '#a78bfa' : '#34d399'}">
+              ${m.method}
+            </span>
+            ${m.method === 'claude' && m.from_cache
+              ? '<span style="font-size:10px;margin-left:4px;color:#534AB7">♻ cache</span>' : ''}
+          </td>
+          <td style="font-size:12px;color:#94a3b8">${m.reason}</td>
+          <td>${m.inserted
+            ? '<span style="color:#34d399">✓</span>'
+            : (m.should_count ? '<span style="color:#f472b6">—</span>' : '<span style="color:#444">skip</span>')}</td>
+        </tr>
+      `).join("");
+    }
+
+    // ── Tableau doublons ──
+    const dupSection = document.getElementById("sc-duplicates");
+    if (data.duplicates && data.duplicates.length > 0) {
+      dupSection.style.display = "block";
+      document.getElementById("sc-dup-body").innerHTML = data.duplicates.map(d => `
+        <tr style="opacity:${d.removed ? 0.4 : 1}">
+          <td>
+            <span style="font-size:11px;padding:2px 6px;border-radius:10px;
+                         background:${d.type === 'sort_bug' ? '#3a1a2e' : '#1e3a5f'};
+                         color:${d.type === 'sort_bug' ? '#f472b6' : '#60a5fa'}">
+              ${d.type === 'sort_bug' ? 'Bug SORT' : 'Standard'}
+            </span>
+          </td>
+          <td style="font-size:12px;color:#94a3b8">
+            id=${d.keep.id} &nbsp; ${d.keep.timestamp.split(' ')[1]}
+          </td>
+          <td style="font-size:12px;color:#f472b6">
+            id=${d.remove.id} &nbsp; ${d.remove.timestamp.split(' ')[1]}
+          </td>
+          <td><span class="badge badge-${d.keep.class}">${d.keep.class}</span></td>
+          <td>
+            <span class="dir-badge ${d.keep.direction === '↑' ? 'dir-up' : 'dir-down'}">
+              ${d.keep.direction}
+            </span>
+          </td>
+          <td style="color:#fb923c">${d.delta_sec}s</td>
+          <td style="font-size:12px;color:#94a3b8">
+            ${d.reason}
+            ${d.bbox_check !== undefined
+              ? `<span style="margin-left:6px;font-size:10px;padding:1px 5px;border-radius:8px;
+                              background:${d.bbox_check ? '#14392b' : '#3a1a2e'};
+                              color:${d.bbox_check ? '#34d399' : '#f472b6'}">
+                   bbox ${d.bbox_check ? 'ok' : '?'}
+                 </span>`
+              : ''}
+          </td>
+          <td>
+            ${d.removed
+              ? '<span style="color:#34d399">Supprimé</span>'
+              : '<span style="color:#f472b6">En attente</span>'}
+          </td>
+        </tr>
+      `).join("");
+    } else {
+      dupSection.style.display = "none";
+    }
+
+    // ── Activation des boutons ──
+    const hasToInsert  = data.missed  && data.missed.some(m => m.should_count && !m.inserted);
+    const hasDuplicates = data.duplicates && data.duplicates.length > 0
+                          && data.duplicates.some(d => d.removed !== true);
+
+    setBtn("sc-insert-btn", hasToInsert,   "#1D9E75");
+    setBtn("sc-dedup-btn",  hasDuplicates, "#A32D2D");
+  }
+</script>
+
+</body>
+</html>
